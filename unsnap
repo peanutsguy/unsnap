@@ -103,9 +103,12 @@ function generate_flatpak_install_script() {
         debian|ubuntu|linuxmint|pop|elementary|zorin)
         cat <<EOT >> "$INSTALLFLATPACKSCRIPT"
 # Documentation: https://flatpak.org/setup/
+echo "Package: snapd" > /etc/apt/preferences.d/nosnap.pref
+echo "Pin: release a=*" >> /etc/apt/preferences.d/nosnap.pref
+echo "Pin-Priority: -10" >> /etc/apt/preferences.d/nosnap.pref
 sudo apt update
 sudo apt install -y flatpak
-# sudo apt install gnome-software-plugin-flatpak
+sudo apt install --install-suggests -y gnome-software gnome-software-plugin-flatpak
 EOT
             ;;
         *)
@@ -188,7 +191,7 @@ function generate_remove_snapd_script() {
     echo "echo Removing snapd" >> "$REMOVESNAPDSCRIPT" 
     case $DISTRO in
         debian|ubuntu|linuxmint|pop|elementary|zorin)
-            echo "sudo apt remove snapd" >> "$REMOVESNAPDSCRIPT"
+            echo "sudo apt remove --autoremove --purge -y snapd" >> "$REMOVESNAPDSCRIPT"
             ;;
         *)
             echo "ERROR: Unable to generate snapd removal script. Unimplemented distro." | tee -a "$LOGFILE"
@@ -322,13 +325,14 @@ function run_scripts() {
         echo "ERROR: Failed to remove snaps" | tee -a "$LOGFILE"
         exit 14
     fi
-    # echo "INFO: Removing snapd daemon" | tee -a "$LOGFILE"
-    # if "$REMOVESNAPDSCRIPT"; then
-    #     echo "INFO: snapd removed" | tee -a "$LOGFILE"
-    # else
-    #     echo "ERROR: Failed to remove snapd" | tee -a "$LOGFILE"
-    #     exit 15
-    # fi
+    echo "INFO: Removing snapd daemon" | tee -a "$LOGFILE"
+    if "$REMOVESNAPDSCRIPT"; then
+        echo "INFO: snapd removed" | tee -a "$LOGFILE"
+    else
+        echo "ERROR: Failed to remove snapd" | tee -a "$LOGFILE"
+        exit 15
+    fi
+
 }
 
 function recommend_reboot() {
@@ -343,7 +347,9 @@ if [ "$1" == "check" ]; then
     echo "INFO: Check requested" | tee -a "$LOGFILE"
     check_applist
 else
-    display_warnings
+    if [ "$1" != "unattended" ]; then
+        display_warnings
+    fi
     create_logdir
 fi
 determine_distro
@@ -355,7 +361,7 @@ generate_packages_install_script
 generate_remove_snaps_script
 generate_remove_snapd_script
 cleanup
-if [ "$1" == "auto" ]; then
+if [ "$1" == "auto" ] || [ "$1" == "unattended" ]; then
     echo "INFO: Auto requested" | tee -a "$LOGFILE"
     run_scripts
     recommend_reboot
